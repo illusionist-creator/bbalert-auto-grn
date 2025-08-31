@@ -675,13 +675,13 @@ class BigBasketAutomation:
         for col in string_columns:
             df[col] = df[col].astype(str).str.replace("'", "", regex=False)
         
-        # Remove rows where second column is blank
-        if len(df.columns) >= 2:
-            second_col = df.columns[1]
+        # Remove rows where fifth column is blank (changed from second to fifth)
+        if len(df.columns) >= 5:
+            fifth_col = df.columns[4]  # Index 4 for fifth column
             mask = ~(
-                df[second_col].isna() | 
-                (df[second_col].astype(str).str.strip() == "") |
-                (df[second_col].astype(str).str.strip() == "nan")
+                df[fifth_col].isna() | 
+                (df[fifth_col].astype(str).str.strip() == "") |
+                (df[fifth_col].astype(str).str.strip() == "nan")
             )
             df = df[mask]
         
@@ -819,20 +819,6 @@ def main():
         # Show authentication status
         auth_status = "✅ Authenticated" if st.session_state.automation.gmail_service else "❌ Not Authenticated"
         st.write(f"**Status:** {auth_status}")
-        
-        # Logs section
-        st.markdown("---")
-        st.subheader("📋 Activity Logs")
-        if st.button("🗑️ Clear Logs"):
-            st.session_state.logs = []
-            st.rerun()
-        
-        # Display logs
-        if 'logs' in st.session_state and st.session_state.logs:
-            log_text = "\n".join(st.session_state.logs[-10:])  # Show last 10 logs
-            st.text_area("Recent Activity", log_text, height=200, disabled=True)
-        else:
-            st.info("No activity logs yet")
     
     # Main content area
     if not st.session_state.automation.gmail_service:
@@ -840,8 +826,8 @@ def main():
         st.info("👈 Click 'Authenticate with Google' in the sidebar to get started.")
         return
     
-    # Workflow tabs
-    tab1, tab2 = st.tabs(["📧 Gmail Workflow", "📊 Excel GRN Workflow"])
+    # Workflow tabs - Added separate Logs tab
+    tab1, tab2, tab3 = st.tabs(["📧 Gmail Workflow", "📊 Excel GRN Workflow", "📋 Activity Logs"])
     
     with tab1:
         st.header("📧 Gmail Attachment Downloader")
@@ -850,24 +836,29 @@ def main():
         col1, col2 = st.columns(2)
         
         with col1:
-            sender = st.text_input("📨 Sender Email", placeholder="sender@example.com")
-            search_term = st.text_input("🔍 Search Keywords", 
-                                      placeholder="invoice, report (comma-separated)",
-                                      help="Search for specific terms in email subject/body")
+            # Fixed sender email (not editable)
+            st.text_input("📨 Sender Email", value="alerts@bigbasket.com", disabled=True)
+            # Fixed search term (not editable)  
+            st.text_input("🔍 Search Keywords", value="GRN", disabled=True)
             
         with col2:
-            days_back = st.number_input("📅 Days Back", min_value=1, max_value=30, value=7)
-            max_results = st.number_input("📊 Max Emails", min_value=1, max_value=100, value=50)
-            gdrive_folder_id = st.text_input("📁 Google Drive Folder ID", 
-                                           placeholder="Optional: Specific folder ID")
+            # Editable days back (up to 365)
+            days_back = st.number_input("📅 Days Back", min_value=1, max_value=365, value=7)
+            # Editable max results (up to 1000)
+            max_results = st.number_input("📊 Max Emails", min_value=1, max_value=1000, value=50)
+            
+        # Fixed Google Drive folder ID (not editable but visible)
+        st.text_input("📁 Google Drive Folder ID", 
+                     value="1l5L9IdQ8WcV6AZ04JCeuyxvbNkLPJnHt", 
+                     disabled=True)
         
         if st.button("🚀 Start Gmail Workflow", type="primary"):
             config = {
-                'sender': sender,
-                'search_term': search_term,
+                'sender': "alerts@bigbasket.com",
+                'search_term': "GRN",
                 'days_back': days_back,
                 'max_results': max_results,
-                'gdrive_folder_id': gdrive_folder_id
+                'gdrive_folder_id': "1l5L9IdQ8WcV6AZ04JCeuyxvbNkLPJnHt"
             }
             
             progress_bar = st.progress(0)
@@ -887,28 +878,34 @@ def main():
         col1, col2 = st.columns(2)
         
         with col1:
-            excel_folder_id = st.text_input("📁 Excel Files Folder ID", 
-                                          placeholder="Google Drive folder ID with Excel files")
-            spreadsheet_id = st.text_input("📋 Target Spreadsheet ID", 
-                                         placeholder="Google Sheets ID for output")
+            # Fixed folder ID (not editable but visible)
+            st.text_input("📁 Excel Files Folder ID", 
+                         value="1dQnXXscJsHnl9Ue-zcDazGLQuXAxIUQG", 
+                         disabled=True)
+            # Fixed spreadsheet ID (not editable but visible)
+            st.text_input("📋 Target Spreadsheet ID", 
+                         value="170WUaPhkuxCezywEqZXJtHRw3my3rpjB9lJOvfLTeKM", 
+                         disabled=True)
             
         with col2:
-            sheet_name = st.text_input("📄 Sheet Name", value="Sheet1")
-            header_row = st.number_input("📋 Header Row", min_value=-1, max_value=10, value=0,
-                                       help="Row containing headers (0-based, -1 for no headers)")
-            days_back = st.number_input("📅 Process Files From (Days)", min_value=1, max_value=90, value=7)
-            max_files = st.number_input("📊 Max Files to Process", min_value=1, max_value=200, value=50)
+            # Fixed sheet name (not editable but visible)
+            st.text_input("📄 Sheet Name", value="bbalertgrn", disabled=True)
+            # Fixed header row (not editable but visible)
+            st.number_input("📋 Header Row", value=0, disabled=True)
+            
+        # Editable fields
+        col3, col4 = st.columns(2)
+        with col3:
+            days_back = st.number_input("📅 Process Files From (Days)", min_value=1, max_value=365, value=7)
+        with col4:
+            max_files = st.number_input("📊 Max Files to Process", min_value=1, max_value=1000, value=50)
         
         if st.button("🚀 Start Excel Workflow", type="primary"):
-            if not excel_folder_id or not spreadsheet_id:
-                st.error("❌ Please provide both Excel folder ID and Spreadsheet ID")
-                return
-            
             config = {
-                'excel_folder_id': excel_folder_id,
-                'spreadsheet_id': spreadsheet_id,
-                'sheet_name': sheet_name,
-                'header_row': header_row,
+                'excel_folder_id': "1dQnXXscJsHnl9Ue-zcDazGLQuXAxIUQG",
+                'spreadsheet_id': "170WUaPhkuxCezywEqZXJtHRw3my3rpjB9lJOvfLTeKM",
+                'sheet_name': "bbalertgrn",
+                'header_row': 0,
                 'days_back': days_back,
                 'max_files': max_files
             }
@@ -922,6 +919,59 @@ def main():
                 st.success(f"✅ Excel workflow completed! Processed {result['processed']} files.")
             else:
                 st.error("❌ Excel workflow failed. Check logs for details.")
+    
+    # New separate Logs tab
+    with tab3:
+        st.header("📋 Activity Logs")
+        st.markdown("Monitor real-time activity and workflow progress")
+        
+        col1, col2 = st.columns([3, 1])
+        with col1:
+            st.subheader("Recent Activity")
+        with col2:
+            if st.button("🗑️ Clear All Logs"):
+                st.session_state.logs = []
+                st.rerun()
+        
+        # Display logs in a container with auto-refresh
+        log_container = st.container()
+        
+        with log_container:
+            if 'logs' in st.session_state and st.session_state.logs:
+                # Show all logs in reverse order (newest first)
+                log_text = "\n".join(reversed(st.session_state.logs))
+                st.text_area(
+                    "Activity Log", 
+                    log_text, 
+                    height=400, 
+                    disabled=True,
+                    key="full_logs"
+                )
+                
+                # Show log statistics
+                st.markdown("---")
+                col1, col2, col3 = st.columns(3)
+                
+                with col1:
+                    st.metric("Total Log Entries", len(st.session_state.logs))
+                
+                with col2:
+                    error_count = sum(1 for log in st.session_state.logs if "ERROR" in log)
+                    st.metric("Error Count", error_count)
+                
+                with col3:
+                    success_count = sum(1 for log in st.session_state.logs if "SUCCESS" in log)
+                    st.metric("Success Count", success_count)
+                    
+            else:
+                st.info("No activity logs yet. Start a workflow to see logs appear here.")
+                st.markdown("---")
+                st.markdown("**Logs will show:**")
+                st.markdown("- Email processing status")
+                st.markdown("- File upload progress") 
+                st.markdown("- Excel processing details")
+                st.markdown("- Error messages and debugging info")
+                st.markdown("- Success confirmations")
     
     # Footer
     st.markdown("---")
