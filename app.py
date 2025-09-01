@@ -661,7 +661,7 @@ class BigBasketAutomation:
         if isinstance(value, (int, float)):
             if pd.isna(value):
                 return ""
-            return str(value)
+            return value  # Return numbers as numbers, not strings
         cleaned = str(value).strip().replace("'", "")
         return cleaned
     
@@ -704,11 +704,12 @@ class BigBasketAutomation:
             return False
     
     def _append_to_sheet(self, spreadsheet_id: str, sheet_name: str, df: pd.DataFrame, append_headers: bool):
-        """Append DataFrame to Google Sheet"""
+        """Append DataFrame to Google Sheet while preserving number formatting"""
         try:
-            # Prepare data
-            clean_data = df.fillna('').astype(str)
+            # Prepare data - don't convert everything to strings
+            clean_data = df.fillna('')
             
+            # Convert DataFrame to list of lists, preserving data types
             if append_headers:
                 values = [clean_data.columns.tolist()] + clean_data.values.tolist()
             else:
@@ -717,14 +718,16 @@ class BigBasketAutomation:
             if not values:
                 return
             
+            # Create the request body with proper value input option
             body = {
                 'values': values
             }
             
+            # Use USER_ENTERED instead of RAW to preserve number formatting
             self.sheets_service.spreadsheets().values().append(
                 spreadsheetId=spreadsheet_id,
                 range=f"{sheet_name}!A1",
-                valueInputOption='RAW',
+                valueInputOption='USER_ENTERED',  # Changed from 'RAW' to 'USER_ENTERED'
                 body=body
             ).execute()
             
@@ -732,65 +735,83 @@ class BigBasketAutomation:
             raise Exception(f"Failed to append to sheet: {str(e)}")
     
     def _remove_duplicates_from_sheet(self, spreadsheet_id: str, sheet_name: str):
-        """Remove duplicate rows from Google Sheet"""
-        try:
-            # Get all data
-            result = self.sheets_service.spreadsheets().values().get(
-                spreadsheetId=spreadsheet_id,
-                range=f"{sheet_name}!A:ZZ"
-            ).execute()
-            
-            values = result.get('values', [])
-            if len(values) <= 1:  # No data or only headers
-                return
-            
-            # Keep headers separate
-            headers = values[0] if values else []
-            data_rows = values[1:] if len(values) > 1 else []
-            
-            if not data_rows:
-                return
-            
-            # Remove duplicates while preserving order
-            seen = set()
-            unique_rows = []
-            duplicates_count = 0
-            
-            for row in data_rows:
-                # Pad row to match headers length
-                padded_row = row + [''] * (len(headers) - len(row))
-                row_tuple = tuple(padded_row)
+            """Remove duplicates based on Sku Code and PO No, clean blanks, and sort"""
+            try:
+                result = self.sheets_service.spreadsheets().values().get(
+                    spreadsheetId=spreadsheet_id,
+                    range=f"{sheet_name}!A1:ZZ"
+                ).execute()
+                values = result.get('values', [])
                 
-                if row_tuple not in seen:
-                    seen.add(row_tuple)
-                    unique_rows.append(padded_row)
-                else:
-                    duplicates_count += 1
-            
-            if duplicates_count > 0:
-                # Clear sheet and rewrite with unique data
+                if not values:
+                    self._log_message("Sheet is empty, skipping cleaning")
+                    return
+                
+                # Pad all rows to max length
+                max_len = max(len(row) for row in values)
+                for row in values:
+                    row.extend([''] * (max_len - len(row)))
+                
+                # Create headers
+                headers = [values[0][i] if values[0][i] else f"Column_{i+1}" for i in range(max_len)]
+                
+                rows = values[1:]
+                df = pd.DataFrame(rows, columns=headers)
+                before = len(df)
+                
+                if "Sku Code" in df.columns and "PO No" in df.columns:
+                    df = df.drop_duplicates(subset=["Sku Code", "PO No"], keep="first")
+                
+                after_dup = len(df)
+                removed_dup = before - after_dup
+                
+                # Clean blanks
+                df.replace('', pd.NA, inplace=True)
+                df.dropna(how='all', inplace=True)  # blank rows
+                df.dropna(how='all', axis=1, inplace=True)  # blank columns
+                df.fillna('', inplace=True)
+                
+                after_clean = len(df)
+                removed_clean = after_dup - after_clean
+                
+                # Sort if PO No present
+                if "PO No" in df.columns:
+                    df = df.sort_values(by="PO No", ascending=True)
+                
+                # Prepare data for update, preserving numeric types
+                def process_value(v):
+                    if pd.isna(v) or v == '':
+                        return ''
+                    try:
+                        if '.' in str(v) or 'e' in str(v).lower():
+                            return float(v)
+                        return int(v)
+                    except (ValueError, TypeError):
+                        return str(v)
+                
+                values = []
+                values.append([str(col) for col in df.columns])  # Headers as strings
+                for row in df.itertuples(index=False):
+                    values.append([process_value(cell) for cell in row])
+                
+                # Update sheet
                 self.sheets_service.spreadsheets().values().clear(
                     spreadsheetId=spreadsheet_id,
-                    range=f"{sheet_name}!A:ZZ"
+                    range=sheet_name
                 ).execute()
                 
-                # Write back headers + unique data
-                all_data = [headers] + unique_rows
-                body = {'values': all_data}
-                
+                body = {"values": values}
                 self.sheets_service.spreadsheets().values().update(
                     spreadsheetId=spreadsheet_id,
                     range=f"{sheet_name}!A1",
-                    valueInputOption='RAW',
+                    valueInputOption="RAW",
                     body=body
                 ).execute()
                 
-                self._log_message(f"Removed {duplicates_count} duplicate rows from Google Sheet")
-            else:
-                self._log_message("No duplicates found in Google Sheet")
-                
-        except Exception as e:
-            self._log_message(f"ERROR removing duplicates: {str(e)}")
+                self._log_message(f"Cleaned sheet: removed {removed_dup} duplicates and {removed_clean} blank rows")
+                    
+            except Exception as e:
+                self._log_message(f"ERROR cleaning sheet: {str(e)}")
 
 
 def main():
